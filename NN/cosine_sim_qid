@@ -1,0 +1,139 @@
+import pandas as pd
+import numpy as np
+import timeit
+from sklearn.metrics import mean_squared_error
+from sklearn.metrics.pairwise import cosine_similarity
+import sklearn
+from scipy import sparse
+import operator
+import crab
+
+def check_new_ids(list_qid_test,list_uid_test):
+    count=0
+    for key in list_qid_test:
+        if key not in map_qid.keys():
+            map_qid[key]=len(map_qid)
+            count+=1
+    print 'new qid',count
+    count=0
+    for key in list_uid_test:
+        if key not in map_uid.keys():
+            map_uid[key] = len(map_uid)
+            count += 1
+    print 'new uid',count
+
+def jaccard_sim_reco():
+    for row in validate.itertuples():
+        print row
+        print map_qid[row[1]], map_uid[row[2]]
+        sim = {}
+        qid_i = map_qid[row[1]]
+        uid_i = map_uid[row[2]]
+        a = ratings[qid_i, :]
+        print 'a-shape', a.shape
+        b = ratings[:, uid_i]
+        print 'b-shape', b.shape
+        print 'a', a
+        c = ratings
+        d = ratings.T
+
+        sim1 = [(sklearn.metrics.jaccard_similarity_score(a, c[i], normalize=True, sample_weight=None), i)
+                for i in range(c.shape[0])]
+        print len(sim1), ratings.shape
+        sim1.sort()
+        print sim1[0:10]
+        sim2 = [(sklearn.metrics.jaccard_similarity_score(b, d[i], normalize=True, sample_weight=None), i)
+                for i in range(d.shape[0])]
+        print len(sim2), ratings.shape
+        sim2.sort()
+        print sim2[0:10]
+
+        break
+
+names = ['qid', 'uid', 'answered']
+invited=pd.read_csv("invited_info_train.txt",delimiter="\t",header=None, names=names)
+validate=pd.read_csv("validate_nolabel.txt",delimiter=",",header=0, names=names)
+test=pd.read_csv("test_nolabel.txt",delimiter=",",header=0, names=names)
+
+list_qid=invited.qid.unique()
+list_uid=invited.uid.unique()
+
+map_uid={}
+map_qid={}
+id=0
+for uid in list_uid:
+    map_uid[uid]=id
+    id+=1
+id=0
+for qid in list_qid:
+    map_qid[qid]=id
+    id+=1
+
+list_qid_test=validate.qid.unique()
+list_uid_test=validate.uid.unique()
+check_new_ids(list_qid_test,list_uid_test)
+
+list_qid_test=test.qid.unique()
+list_uid_test=test.uid.unique()
+check_new_ids(list_qid_test,list_uid_test)
+
+n_users = invited.qid.unique().shape[0]
+n_items = invited.uid.unique().shape[0]
+print str(n_users) + ' users'
+print str(n_items) + ' items'
+n_users=len(map_qid)
+n_items=len(map_uid)
+
+ratings = np.zeros((n_users, n_items))
+
+for row in invited.itertuples():
+    ratings[map_qid[row[1]], map_uid[row[2]]] = row[3] +1
+print 'ratings',ratings.shape
+rating_sparse= sparse.csr_matrix(ratings)
+
+similarities = cosine_similarity(rating_sparse)
+print('pairwise dense output:\n {}\n'.format(similarities))
+
+#also can output sparse matrices
+#similarities_sparse = cosine_similarity(rating_sparse,dense_output=False)
+#print('pairwise sparse output:\n {}\n'.format(similarities_sparse))
+
+prob=[]
+for row in validate.itertuples():
+    #print row,print map_qid[row[1]], map_uid[row[2]]
+    qid_i = map_qid[row[1]]
+    uid_i = map_uid[row[2]]
+    #a = ratings[qid_i, :]
+    sim_a=similarities[qid_i,:]
+    sim_qid= sorted(range(len(sim_a)), key=lambda k: sim_a[k],reverse=True)
+    print [sim_a[sim_i] for sim_i in sim_qid[0:10]],
+    print sim_qid[0:10],
+    sum=0
+    counter=0
+    sum_nonzero=0
+    top10_nonzero=0
+    # select top 10 similar whose data is present , which is rare though
+    for idx in sim_qid:
+        counter += 1
+        if idx==0:
+            continue 
+        sum+=ratings[idx][uid_i]
+        if ratings[idx][uid_i]>0:
+            sum_nonzero+=(ratings[idx][uid_i]-1)
+            top10_nonzero+=1
+        if top10_nonzero>10:
+            break
+
+    if top10_nonzero>0:
+        temp_prob=sum_nonzero/(top10_nonzero-1)
+    else :
+        temp_prob=0
+
+    prob.append(temp_prob)
+    temp_prob1=sum/(counter-1)
+
+    print temp_prob,temp_prob1
+
+print prob
+validate[2]=prob
+validate.to_csv("val_pred.csv", sep=',')
