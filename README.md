@@ -1,5 +1,7 @@
 # ByteCup2016 Competition-2016
 
+##Rank Top 25 out of 500+ teams!
+
 Community Question Answer recommendation system for given users and questions 
 
 Implemented different machine learning techniques to predict the top experts to answer particular question
